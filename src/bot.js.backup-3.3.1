@@ -27,7 +27,6 @@ import {
 import { crearServicioPermisos, etiquetaRol, tieneNivel } from "./core/permissions.js";
 import { crearFiltrosContenido } from "./services/contentFilters.js";
 import { crearEstadoDashboard } from "./services/dashboardStats.js";
-import { statsService } from "./services/statsService.js";
 
 /* =========================================================
    CONFIGURACIÓN GENERAL
@@ -36,7 +35,7 @@ import { statsService } from "./services/statsService.js";
 const logger = pino({ level: "silent" });
 
 const PORT = Number(process.env.PORT || 3000);
-const APP_VERSION = "3.3.2";
+const APP_VERSION = "3.3.0";
 const MAX_AVISOS = 3;
 const DELAY_EXPULSION = 5000;
 const PANEL_TOKEN = process.env.PANEL_TOKEN || "cambia-esta-clave";
@@ -705,20 +704,6 @@ app.get("/admin/api/status", (req, res) => {
   res.json(estado);
 });
 
-app.get("/admin/api/stats", (req, res) => {
-  if (!panelAutorizado(req)) {
-    return res.status(401).json({ ok: false, error: "Acceso denegado" });
-  }
-
-  res.setHeader("Cache-Control", "no-store");
-  res.json({
-    ok: true,
-    version: APP_VERSION,
-    uptimeMs: Date.now() - INICIO_BOT,
-    counters: statsService.getAll()
-  });
-});
-
 app.get("/admin/logs", (req, res) => {
   if (!panelAutorizado(req)) return res.status(401).send("Acceso denegado");
   const token = String(req.query.token || PANEL_TOKEN);
@@ -1108,8 +1093,6 @@ async function iniciarBot() {
               esGrupo ? "Grupo" : "Privado"
             }: ${texto}`
           );
-
-          statsService.increment("messages");
 
           if (comando === "!ping") {
             await socket.sendMessage(chat, {
