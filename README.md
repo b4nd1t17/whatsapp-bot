@@ -28,3 +28,8 @@ npm start
 ## Seguridad
 
 No compartas ni subas a GitHub `auth/`, `.env` ni los archivos SQLite de `data/`.
+
+
+## Dashboard en vivo (3.3)
+
+El panel actualiza cada 5 segundos el estado de conexión, uptime, memoria, carga del sistema y actividad de protección sin recargar la página.

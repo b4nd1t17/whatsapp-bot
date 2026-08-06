@@ -242,3 +242,12 @@ export function obtenerRolGuardado(groupId, userId) {
 export function listarRoles(groupId) {
   return db.prepare(`SELECT user_id,role,assigned_by,updated_at FROM bot_roles WHERE group_id=? ORDER BY CASE role WHEN 'superadmin' THEN 1 WHEN 'admin' THEN 2 WHEN 'moderador' THEN 3 ELSE 4 END, updated_at DESC`).all(groupId);
 }
+
+export function obtenerResumenAcciones() {
+  const filas = db.prepare(`
+    SELECT action, COUNT(*) AS total
+    FROM moderation_log
+    GROUP BY action
+  `).all();
+  return Object.fromEntries(filas.map((fila) => [fila.action, Number(fila.total || 0)]));
+}
