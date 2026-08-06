@@ -1,6 +1,6 @@
 {
   "name": "dogma-moderador",
-  "version": "3.3.2",
+  "version": "3.4.0",
   "private": true,
   "type": "module",
   "description": "Dogma Moderador con SQLite, panel web, protecciones y sistema de permisos por roles.",

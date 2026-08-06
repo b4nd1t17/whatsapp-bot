@@ -29,7 +29,8 @@ export function crearEstadoDashboard({
   carga1m,
   cpus,
   nodeVersion,
-  version
+  version,
+  contadores
 }) {
   const total = Math.max(1, Number(memoriaTotal || 1));
   const libre = Math.max(0, Number(memoriaLibre || 0));
@@ -52,6 +53,15 @@ export function crearEstadoDashboard({
       grupos: Number(resumen?.grupos || 0),
       avisosActivos: Number(resumen?.avisosActivos || 0),
       acciones: Number(resumen?.acciones || 0)
+    },
+    contadores: {
+      messages: Number(contadores?.messages || 0),
+      warns: Number(contadores?.warns || 0),
+      kicks: Number(contadores?.kicks || 0),
+      bans: Number(contadores?.bans || 0),
+      spam: Number(contadores?.spam || 0),
+      flood: Number(contadores?.flood || 0),
+      deleted: Number(contadores?.deleted || 0)
     },
     accionesProteccion: proteccion,
     memoria: {

@@ -20,11 +20,15 @@ test("crea métricas seguras para el dashboard", () => {
     carga1m: 1,
     cpus: 4,
     nodeVersion: "v26.6.0",
-    version: "3.3.0"
+    version: "3.4.0",
+    contadores: { messages: 20, warns: 3, kicks: 1, spam: 4, flood: 2 }
   });
   assert.equal(estado.ok, true);
   assert.equal(estado.resumen.grupos, 2);
   assert.equal(estado.accionesProteccion, 7);
   assert.equal(estado.sistema.cargaPorcentaje, 25);
   assert.equal(estado.node, "26.6.0");
+  assert.equal(estado.contadores.messages, 20);
+  assert.equal(estado.contadores.warns, 3);
+  assert.equal(estado.contadores.spam, 4);
 });

@@ -36,7 +36,7 @@ import { statsService } from "./services/statsService.js";
 const logger = pino({ level: "silent" });
 
 const PORT = Number(process.env.PORT || 3000);
-const APP_VERSION = "3.3.2";
+const APP_VERSION = "3.4.0";
 const MAX_AVISOS = 3;
 const DELAY_EXPULSION = 5000;
 const PANEL_TOKEN = process.env.PANEL_TOKEN || "cambia-esta-clave";
@@ -273,6 +273,8 @@ async function borrarMensaje(
   await socket.sendMessage(chat, {
     delete: mensajeKey
   });
+
+  statsService.increment("deleted");
 }
 
 async function expulsarConDelay(
@@ -315,6 +317,8 @@ async function expulsarConDelay(
       [jidUsuario],
       "remove"
     );
+
+    statsService.increment("kicks");
 
     establecerAvisos(
       obtenerConfiguracion(chat),
@@ -383,6 +387,8 @@ async function aplicarAviso(
     jidUsuario,
     avisosNuevos
   );
+
+  statsService.increment("warns");
 
   if (avisosNuevos < MAX_AVISOS) {
     await socket.sendMessage(chat, {
@@ -552,7 +558,7 @@ function plantillaBase({ titulo, contenido, token, refrescar = false }) {
 <style>
 :root{--bg:#090b10;--panel:#11151d;--panel2:#171c26;--text:#f4f6fb;--muted:#98a2b3;--line:#283142;--accent:#7c5cff;--ok:#30d17e;--bad:#ff5d73;--warn:#ffbf47}
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#080a0f 0%,#0d1118 60%,#111827 100%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
-a{color:inherit;text-decoration:none}.layout{display:grid;grid-template-columns:250px 1fr;min-height:100vh}.sidebar{padding:28px 20px;border-right:1px solid var(--line);background:rgba(8,10,15,.92);position:sticky;top:0;height:100vh}.brand{font-weight:800;font-size:21px;margin-bottom:8px}.version{color:var(--muted);font-size:13px;margin-bottom:28px}.nav a{display:block;padding:12px 14px;border-radius:12px;color:#cbd3e1;margin:4px 0}.nav a:hover,.nav a.active{background:var(--panel2);color:white}.main{padding:34px;max-width:1500px;width:100%}.topbar{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:24px}.title h1{margin:0;font-size:30px}.title p{margin:7px 0 0;color:var(--muted)}.status{display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px var(--ok)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}.card{background:rgba(17,21,29,.9);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.22)}.metric-label{color:var(--muted);font-size:13px}.metric-value{font-size:30px;font-weight:800;margin-top:8px}.metric-sub{color:var(--muted);font-size:12px;margin-top:5px}.system-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 24px}.progress{height:8px;background:#252c3a;border-radius:999px;overflow:hidden;margin-top:12px}.progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#30d17e);border-radius:999px;transition:width .35s}.live{font-size:11px;color:var(--ok);text-transform:uppercase;letter-spacing:.08em}.pulse{animation:pulse 1.7s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}.section-title{display:flex;justify-content:space-between;align-items:center;margin:28px 0 14px}.section-title h2{margin:0;font-size:20px}.search{width:320px;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px;color:white}.group-card{background:rgba(17,21,29,.92);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:14px}.group-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:16px}.group-name{font-size:18px;font-weight:750}.group-id{color:var(--muted);font-size:12px;margin-top:5px}.group-meta{color:var(--muted);font-size:13px;white-space:nowrap}.switches{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px}.toggle-form{margin:0}.toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0d1118;border:1px solid var(--line);color:white;border-radius:13px;padding:12px 13px;cursor:pointer}.toggle:hover{border-color:#4a5570}.toggle-pill{width:42px;height:24px;border-radius:999px;background:#333b4d;padding:3px;display:flex;justify-content:flex-start;transition:.2s}.toggle-pill.on{background:var(--ok);justify-content:flex-end}.toggle-knob{width:18px;height:18px;border-radius:50%;background:white}.log-table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:16px;overflow:hidden}.log-table th,.log-table td{padding:13px 14px;border-bottom:1px solid var(--line);font-size:13px;text-align:left}.log-table th{color:var(--muted);font-weight:600;background:#0d1118}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#242b3a;color:#dce3ef;font-size:12px}.empty{color:var(--muted);padding:28px;text-align:center}.footer{color:var(--muted);font-size:12px;margin-top:28px}@media(max-width:1050px){.system-grid{grid-template-columns:1fr}.layout{grid-template-columns:1fr}.sidebar{height:auto;position:static;border-right:0;border-bottom:1px solid var(--line)}.nav{display:flex;flex-wrap:wrap}.main{padding:22px}.grid{grid-template-columns:repeat(2,1fr)}.switches{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.grid,.switches{grid-template-columns:1fr}.group-head,.topbar,.section-title{display:block}.search{margin-top:12px;width:100%}}
+a{color:inherit;text-decoration:none}.layout{display:grid;grid-template-columns:250px 1fr;min-height:100vh}.sidebar{padding:28px 20px;border-right:1px solid var(--line);background:rgba(8,10,15,.92);position:sticky;top:0;height:100vh}.brand{font-weight:800;font-size:21px;margin-bottom:8px}.version{color:var(--muted);font-size:13px;margin-bottom:28px}.nav a{display:block;padding:12px 14px;border-radius:12px;color:#cbd3e1;margin:4px 0}.nav a:hover,.nav a.active{background:var(--panel2);color:white}.main{padding:34px;max-width:1500px;width:100%}.topbar{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:24px}.title h1{margin:0;font-size:30px}.title p{margin:7px 0 0;color:var(--muted)}.status{display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px var(--ok)}.dot.off{background:var(--bad);box-shadow:0 0 12px var(--bad)}.status.off{border-color:rgba(255,93,115,.45)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}.card{background:rgba(17,21,29,.9);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.22)}.metric-label{color:var(--muted);font-size:13px}.metric-value{font-size:30px;font-weight:800;margin-top:8px}.metric-sub{color:var(--muted);font-size:12px;margin-top:5px}.system-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 24px}.progress{height:8px;background:#252c3a;border-radius:999px;overflow:hidden;margin-top:12px}.progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#30d17e);border-radius:999px;transition:width .35s}.live{font-size:11px;color:var(--ok);text-transform:uppercase;letter-spacing:.08em}.pulse{animation:pulse 1.7s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}.section-title{display:flex;justify-content:space-between;align-items:center;margin:28px 0 14px}.section-title h2{margin:0;font-size:20px}.search{width:320px;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px;color:white}.group-card{background:rgba(17,21,29,.92);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:14px}.group-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:16px}.group-name{font-size:18px;font-weight:750}.group-id{color:var(--muted);font-size:12px;margin-top:5px}.group-meta{color:var(--muted);font-size:13px;white-space:nowrap}.switches{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px}.toggle-form{margin:0}.toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0d1118;border:1px solid var(--line);color:white;border-radius:13px;padding:12px 13px;cursor:pointer}.toggle:hover{border-color:#4a5570}.toggle-pill{width:42px;height:24px;border-radius:999px;background:#333b4d;padding:3px;display:flex;justify-content:flex-start;transition:.2s}.toggle-pill.on{background:var(--ok);justify-content:flex-end}.toggle-knob{width:18px;height:18px;border-radius:50%;background:white}.log-table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:16px;overflow:hidden}.log-table th,.log-table td{padding:13px 14px;border-bottom:1px solid var(--line);font-size:13px;text-align:left}.log-table th{color:var(--muted);font-weight:600;background:#0d1118}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#242b3a;color:#dce3ef;font-size:12px}.empty{color:var(--muted);padding:28px;text-align:center}.footer{color:var(--muted);font-size:12px;margin-top:28px}@media(max-width:1050px){.system-grid{grid-template-columns:1fr}.layout{grid-template-columns:1fr}.sidebar{height:auto;position:static;border-right:0;border-bottom:1px solid var(--line)}.nav{display:flex;flex-wrap:wrap}.main{padding:22px}.grid{grid-template-columns:repeat(2,1fr)}.switches{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.grid,.switches{grid-template-columns:1fr}.group-head,.topbar,.section-title{display:block}.search{margin-top:12px;width:100%}}
 </style>
 ${refrescar ? '<meta http-equiv="refresh" content="20">' : ''}
 </head>
@@ -615,10 +621,14 @@ app.get("/admin", (req, res) => {
   const filasLogs = logsRecientes.map((x) => `<tr><td>${escaparHtml(x.created_at)}</td><td><span class="badge">${escaparHtml(nombreAccion(x.action))}</span></td><td>${escaparHtml(informacionGruposPanel.get(x.group_id)?.nombre || x.group_id)}</td><td>${escaparHtml(x.reason || "—")}</td></tr>`).join("");
 
   const contenido = `
-    <div class="topbar"><div class="title"><h1>Panel de administración</h1><p>Control central de tus grupos y protecciones.</p></div><div class="status"><span class="dot"></span>${estadoTexto}</div></div>
+    <div class="topbar"><div class="title"><h1>Panel de administración</h1><p>Control central de tus grupos y protecciones.</p></div><div id="estado-bot" class="status"><span id="estado-dot" class="dot"></span><span id="estado-texto">${estadoTexto}</span></div></div>
     <section class="grid">
       <div class="card"><div class="metric-label">Grupos</div><div id="m-grupos" class="metric-value">${resumen.grupos}</div><div class="metric-sub">gestionados por SQLite</div></div>
-      <div class="card"><div class="metric-label">Avisos activos</div><div id="m-avisos" class="metric-value">${resumen.avisosActivos}</div><div class="metric-sub">acumulados actualmente</div></div>
+      <div class="card"><div class="metric-label">Mensajes procesados</div><div id="m-mensajes" class="metric-value">0</div><div class="metric-sub">desde el último arranque</div></div>
+      <div class="card"><div class="metric-label">Avisos emitidos</div><div id="m-warns" class="metric-value">0</div><div class="metric-sub"><span id="m-avisos">${resumen.avisosActivos}</span> activos actualmente</div></div>
+      <div class="card"><div class="metric-label">Expulsiones</div><div id="m-kicks" class="metric-value">0</div><div class="metric-sub">acciones automáticas y manuales</div></div>
+      <div class="card"><div class="metric-label">Spam bloqueado</div><div id="m-spam" class="metric-value">0</div><div class="metric-sub">mensajes repetidos detectados</div></div>
+      <div class="card"><div class="metric-label">Flood bloqueado</div><div id="m-flood" class="metric-value">0</div><div class="metric-sub">ráfagas de mensajes detectadas</div></div>
       <div class="card"><div class="metric-label">Acciones registradas</div><div id="m-acciones" class="metric-value">${resumen.acciones}</div><div class="metric-sub">historial de moderación</div></div>
       <div class="card"><div class="metric-label">Tiempo activo <span class="live pulse">● vivo</span></div><div id="m-uptime" class="metric-value" style="font-size:22px">${formatoDuracion(Date.now() - INICIO_BOT)}</div><div class="metric-sub">Dogma Moderador ${APP_VERSION}</div></div>
     </section>
@@ -645,7 +655,17 @@ app.get("/admin", (req, res) => {
           setText('m-grupos',d.resumen.grupos);
           setText('m-avisos',d.resumen.avisosActivos);
           setText('m-acciones',d.resumen.acciones);
+          setText('m-mensajes',d.contadores.messages);
+          setText('m-warns',d.contadores.warns);
+          setText('m-kicks',d.contadores.kicks);
+          setText('m-spam',d.contadores.spam);
+          setText('m-flood',d.contadores.flood);
           setText('m-uptime',d.uptimeTexto);
+          const estado=document.getElementById('estado-bot');
+          const punto=document.getElementById('estado-dot');
+          setText('estado-texto',d.ok?'Bot conectado':'Bot desconectado');
+          estado?.classList.toggle('off',!d.ok);
+          punto?.classList.toggle('off',!d.ok);
           setText('m-memoria',d.memoria.rssTexto);
           setText('s-memoria',d.memoria.heapTexto+' · '+d.sistema.ramLibreTexto+' libres en el Mac');
           setBar('p-memoria',d.memoria.porcentajeSistema);
@@ -699,7 +719,8 @@ app.get("/admin/api/status", (req, res) => {
     carga1m: os.loadavg()[0],
     cpus: os.cpus().length,
     nodeVersion: process.version,
-    version: APP_VERSION
+    version: APP_VERSION,
+    contadores: statsService.getAll()
   });
   res.setHeader("Cache-Control", "no-store");
   res.json(estado);
@@ -1188,11 +1209,13 @@ async function iniciarBot() {
           if (!autorEsAdmin && !protegido && configuracion.antiflood && detectarFlood(chat, autor)) {
             await aplicarAviso(socket, chat, autor, configuracion, "flood: demasiados mensajes en pocos segundos", mensaje.key);
             registrarAccion({groupId:chat,targetId:autor,action:"antiflood",reason:"6 mensajes en 10 segundos"});
+            statsService.increment("flood");
             continue;
           }
           if (!autorEsAdmin && !protegido && configuracion.antispam && detectarRepeticion(chat, autor, texto)) {
             await aplicarAviso(socket, chat, autor, configuracion, "spam: mensaje repetido", mensaje.key);
             registrarAccion({groupId:chat,targetId:autor,action:"antispam",reason:"mensaje repetido 3 veces"});
+            statsService.increment("spam");
             continue;
           }
           if (!autorEsAdmin && !protegido && configuracion.antimayusculas && demasiadasMayusculas(texto, configuracion.porcentajeMayusculas)) {
