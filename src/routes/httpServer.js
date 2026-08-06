@@ -118,7 +118,11 @@ const html = crearDashboard({
     ultimoReinicio: new Date().toLocaleString()
   },
 
-  actividad: []
+    actividad: obtenerLogsPanel(10).map(log => ({
+    icono: "🛡️",
+    titulo: `${log.action}${log.reason ? " - " + log.reason : ""}`,
+    fecha: log.created_at
+  }))
 });
 
   res.send(html);
