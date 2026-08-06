@@ -1,13 +1,13 @@
 {
   "name": "dogma-moderador",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "private": true,
   "type": "module",
   "description": "Dogma Moderador con SQLite, panel web, protecciones y sistema de permisos por roles.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check src/bot.js && node --check src/core/utils.js && node --check src/core/permissions.js && node --check src/services/contentFilters.js && node --check src/services/dashboardStats.js && node --check database/storage.js && node --check src/services/statsService.js",
+    "check": "node --check index.js && node --check src/bot.js && node --check src/core/utils.js && node --check src/core/permissions.js && node --check src/services/contentFilters.js && node --check src/services/dashboardStats.js && node --check database/storage.js && node --check src/services/statsService.js && node --check src/routes/httpServer.js",
     "test": "node --test"
   },
   "engines": {
