@@ -1,5 +1,5 @@
 /**
- * Página principal del Dashboard
+ * Dashboard PRO
  * Dogma Moderador 4.0
  */
 
@@ -22,39 +22,221 @@ export function crearDashboard(datos = {}) {
 <html lang="es">
 
 <head>
+
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Dogma Moderador 4.0</title>
+
+<style>
+
+:root {
+  --bg:#080b12;
+  --panel:#111827;
+  --panel2:#1f2937;
+  --text:#f9fafb;
+  --muted:#9ca3af;
+  --accent:#7c3aed;
+  --green:#22c55e;
+  --red:#ef4444;
+}
+
+
+* {
+ box-sizing:border-box;
+}
+
+
+body {
+
+ margin:0;
+ min-height:100vh;
+
+ background:
+ radial-gradient(circle at top,#1e293b,#020617);
+
+ color:var(--text);
+
+ font-family:
+ Inter,
+ system-ui,
+ Arial,
+ sans-serif;
+
+}
+
+
+.dashboard {
+
+ max-width:1400px;
+ margin:auto;
+ padding:35px;
+
+}
+
+
+.header {
+
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+
+ margin-bottom:30px;
+
+}
+
+
+.header h1 {
+
+ margin:0;
+ font-size:32px;
+
+}
+
+
+.version {
+
+ color:var(--muted);
+
+}
+
+
+.grid {
+
+ display:grid;
+
+ grid-template-columns:
+ repeat(auto-fit,minmax(250px,1fr));
+
+ gap:20px;
+
+}
+
+
+.card {
+
+ background:
+ linear-gradient(
+ 145deg,
+ var(--panel),
+ var(--panel2)
+ );
+
+ border-radius:20px;
+
+ padding:25px;
+
+ border:1px solid #334155;
+
+ box-shadow:
+ 0 20px 40px rgba(0,0,0,.3);
+
+}
+
+
+.section {
+
+ margin-top:25px;
+
+}
+
+
+.status {
+
+ display:inline-flex;
+
+ padding:10px 18px;
+
+ border-radius:999px;
+
+ background:#052e16;
+
+ color:#86efac;
+
+ font-weight:bold;
+
+}
+
+
+.footer {
+
+ margin-top:40px;
+
+ color:var(--muted);
+
+ text-align:center;
+
+ font-size:13px;
+
+}
+
+
+</style>
+
 </head>
+
 
 <body>
 
+
 <div class="dashboard">
 
-<header class="dashboard-header">
-  <h1>🛡️ Dogma Moderador</h1>
-  <span>Versión 4.0 DEV</span>
-</header>
+
+<div class="header">
+
+<div>
+
+<h1>🛡️ Dogma Moderador</h1>
+
+<div class="version">
+Panel de control 4.0
+</div>
+
+</div>
 
 
-<section>
-${crearTarjetasEstadisticas(stats)}
-</section>
-
-
-<section>
-${crearEstadoSistema(sistema)}
-</section>
-
-
-<section>
-${crearActividadReciente(actividad)}
-</section>
+<div class="status">
+🟢 ONLINE
+</div>
 
 
 </div>
+
+
+<div class="grid">
+
+${crearTarjetasEstadisticas(stats)}
+
+</div>
+
+
+<div class="section card">
+
+${crearEstadoSistema(sistema)}
+
+</div>
+
+
+<div class="section card">
+
+${crearActividadReciente(actividad)}
+
+</div>
+
+
+<div class="footer">
+
+Dogma Moderador 4.0 · Panel protegido
+
+</div>
+
+
+</div>
+
 
 </body>
 
 </html>
 `;
+
 }
