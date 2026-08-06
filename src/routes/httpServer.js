@@ -98,22 +98,28 @@ app.get("/dashboard", (req, res) => {
     return res.status(401).send("Acceso denegado");
   }
 
-  const html = crearDashboard({
-    stats: {
-      mensajes: 0,
-      acciones: 0,
-      usuarios: 0,
-      grupos: 0
-    },
-    sistema: {
-      online: true,
-      uptime: "Activo",
-      memoria: "Calculando",
-      cpu: "Calculando",
-      ultimoReinicio: new Date().toLocaleString()
-    },
-    actividad: []
-  });
+  const resumen = obtenerResumen();
+const acciones = obtenerResumenAcciones();
+const contadores = statsService.getAll();
+
+const html = crearDashboard({
+  stats: {
+    mensajes: contadores.messages || 0,
+    acciones: resumen.acciones || 0,
+    usuarios: 0,
+    grupos: resumen.grupos || 0
+  },
+
+  sistema: {
+    online: obtenerEstadoConexion() === "conectado",
+    uptime: formatoDuracion(Date.now() - INICIO_BOT),
+    memoria: `${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
+    cpu: os.loadavg()[0].toFixed(2),
+    ultimoReinicio: new Date().toLocaleString()
+  },
+
+  actividad: []
+});
 
   res.send(html);
 });
