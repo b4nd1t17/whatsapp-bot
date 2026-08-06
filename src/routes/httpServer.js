@@ -1,3 +1,4 @@
+import { crearDashboard } from "../dashboard/dashboardPage.js";
 import express from "express";
 import os from "node:os";
 import { crearEstadoDashboard } from "../services/dashboardStats.js";
@@ -92,6 +93,30 @@ ${refrescar ? '<meta http-equiv="refresh" content="20">' : ''}
 </body></html>`;
 }
 
+app.get("/dashboard", (req, res) => {
+  if (!panelAutorizado(req)) {
+    return res.status(401).send("Acceso denegado");
+  }
+
+  const html = crearDashboard({
+    stats: {
+      mensajes: 0,
+      acciones: 0,
+      usuarios: 0,
+      grupos: 0
+    },
+    sistema: {
+      online: true,
+      uptime: "Activo",
+      memoria: "Calculando",
+      cpu: "Calculando",
+      ultimoReinicio: new Date().toLocaleString()
+    },
+    actividad: []
+  });
+
+  res.send(html);
+});
 app.get("/admin", (req, res) => {
   if (!panelAutorizado(req)) {
     return res.status(401).send("Acceso denegado. Añade ?token=TU_CLAVE");
