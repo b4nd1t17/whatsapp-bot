@@ -44,6 +44,12 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY(group_id, user_id)
   );
+CREATE TABLE IF NOT EXISTS blocked_users (
+group_id TEXT NOT NULL,
+user_id TEXT NOT NULL,
+created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY(group_id, user_id)
+);
   CREATE TABLE IF NOT EXISTS bot_roles (
     group_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -54,12 +60,20 @@ db.exec(`
     PRIMARY KEY(group_id, user_id)
   );
   CREATE TABLE IF NOT EXISTS access_list (
-    group_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    list_type TEXT NOT NULL CHECK(list_type IN ('white','black')),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(group_id, user_id, list_type)
-  );
+group_id TEXT NOT NULL,
+user_id TEXT NOT NULL,
+list_type TEXT NOT NULL CHECK(list_type IN ('white','black')),
+created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY(group_id, user_id, list_type)
+);
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+group_id TEXT NOT NULL,
+user_id TEXT NOT NULL,
+expires_at INTEGER NOT NULL,
+created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY(group_id, user_id)
+);
 `);
 
 function ensureColumn(name, sql) {
@@ -242,6 +256,34 @@ export function obtenerRolGuardado(groupId, userId) {
 export function listarRoles(groupId) {
   return db.prepare(`SELECT user_id,role,assigned_by,updated_at FROM bot_roles WHERE group_id=? ORDER BY CASE role WHEN 'superadmin' THEN 1 WHEN 'admin' THEN 2 WHEN 'moderador' THEN 3 ELSE 4 END, updated_at DESC`).all(groupId);
 }
+export function bloquearUsuario(groupId, userId) {
+  db.prepare(`
+    INSERT OR IGNORE INTO blocked_users(group_id,user_id)
+    VALUES(?,?)
+  `).run(groupId, userId);
+}
+
+export function desbloquearUsuario(groupId, userId) {
+  db.prepare(`
+    DELETE FROM blocked_users
+    WHERE group_id=? AND user_id=?
+  `).run(groupId, userId);
+}
+
+export function estaBloqueado(groupId, userId) {
+  return !!db.prepare(`
+    SELECT 1
+    FROM blocked_users
+    WHERE group_id=? AND user_id=?
+  `).get(groupId, userId);
+}
+export function listarTodosBloqueados() {
+  return db.prepare(`
+    SELECT group_id, user_id, created_at
+    FROM blocked_users
+    ORDER BY created_at DESC
+  `).all();
+}
 
 export function obtenerResumenAcciones() {
   const filas = db.prepare(`
@@ -250,4 +292,36 @@ export function obtenerResumenAcciones() {
     GROUP BY action
   `).all();
   return Object.fromEntries(filas.map((fila) => [fila.action, Number(fila.total || 0)]));
+}
+
+export function crearSesionAdmin(groupId, userId, horas = 24) {
+  const expires = Date.now() + (horas * 60 * 60 * 1000);
+
+  db.prepare(`
+    INSERT INTO admin_sessions(group_id, user_id, expires_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(group_id, user_id)
+    DO UPDATE SET expires_at=excluded.expires_at
+  `).run(groupId, userId, expires);
+}
+
+export function tieneSesionAdmin(groupId, userId) {
+  const row = db.prepare(`
+    SELECT expires_at
+    FROM admin_sessions
+    WHERE group_id=? AND user_id=?
+  `).get(groupId, userId);
+
+  if (!row) return false;
+
+  if (Number(row.expires_at) <= Date.now()) {
+    db.prepare(`
+      DELETE FROM admin_sessions
+      WHERE group_id=? AND user_id=?
+    `).run(groupId, userId);
+
+    return false;
+  }
+
+  return true;
 }

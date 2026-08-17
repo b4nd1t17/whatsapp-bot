@@ -1,6 +1,7 @@
 import { crearDashboard } from "../dashboard/dashboardPage.js";
 import express from "express";
 import os from "node:os";
+import { nombreVisible, obtenerJid } from "../core/utils.js";
 import { crearEstadoDashboard } from "../services/dashboardStats.js";
 
 export function iniciarServidorHttp({
@@ -18,7 +19,11 @@ export function iniciarServidorHttp({
   actualizarNumeroGrupo,
   obtenerLogsPanel,
   obtenerResumenAcciones,
-  statsService
+listarTodosBloqueados,
+bloquearUsuario,
+desbloquearUsuario, 
+ statsService,
+socket
 }) {
   const PORT = port;
   const PANEL_TOKEN = panelToken;
@@ -26,6 +31,7 @@ export function iniciarServidorHttp({
   const INICIO_BOT = inicioBot;
 
 const app = express();
+console.log("SOCKET PANEL:", !!socket);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
@@ -122,16 +128,101 @@ const html = crearDashboard({
     icono: "🛡️",
     titulo: `${log.action}${log.reason ? " - " + log.reason : ""}`,
     fecha: log.created_at
-  }))
+  })),
+bloqueados: listarTodosBloqueados(),
+token: req.query.token
 });
 
   res.send(html);
 });
-app.get("/admin", (req, res) => {
+app.post("/api/bloquear", (req, res) => {
+
   if (!panelAutorizado(req)) {
-    return res.status(401).send("Acceso denegado. Añade ?token=TU_CLAVE");
+    return res.status(401).json({ error: "Acceso denegado" });
   }
 
+  const { groupId, userId } = req.body;
+
+  if (!groupId || !userId) {
+    return res.status(400).json({
+      error: "Faltan datos"
+    });
+  }
+
+  bloquearUsuario(groupId, userId);
+
+  res.redirect(`/admin/admins?token=${encodeURIComponent(req.body.token || PANEL_TOKEN)}&groupId=${encodeURIComponent(groupId)}`);
+
+
+});
+
+
+app.post("/api/desbloquear", (req, res) => {
+
+  if (!panelAutorizado(req)) {
+    return res.status(401).json({ error: "Acceso denegado" });
+  }
+
+  const { groupId, userId } = req.body;
+
+  if (!groupId || !userId) {
+    return res.status(400).json({
+      error: "Faltan datos"
+    });
+  }
+
+  desbloquearUsuario(groupId, userId);
+
+  res.redirect(`/admin/admins?token=${encodeURIComponent(req.body.token || PANEL_TOKEN)}&groupId=${encodeURIComponent(groupId)}`);
+
+
+
+
+});
+
+app.get("/api/admins/:groupId", async (req, res) => {
+console.log("✅ RUTA ADMINS CARGADA");
+
+  if (!panelAutorizado(req)) {
+    return res.status(401).json({
+      error: "Acceso denegado"
+    });
+  }
+
+  try {
+
+    const wa = socket();
+
+    if (!wa) {
+      return res.json({
+        error: "WhatsApp no conectado"
+      });
+    }
+
+    const metadata = await wa.groupMetadata(req.params.groupId);
+
+    const admins = metadata.participants
+      .filter(p => p.admin)
+      .map(p => ({
+  id: p.id,
+  admin: p.admin,
+  nombre: p.notify || p.name || p.verifiedName || null,
+  numero: p.participantAlt || null
+}));
+
+    res.json(admins);
+
+  } catch (e) {
+
+    res.status(500).json({
+      error: e.message
+    });
+
+  }
+
+});
+
+app.get("/admin", (req, res) => {
   const grupos = obtenerGruposPanel();
   const resumen = obtenerResumen();
   const logsRecientes = obtenerLogsPanel(8);
@@ -158,7 +249,15 @@ app.get("/admin", (req, res) => {
       <div class="group-head"><div><div class="group-name">${escaparHtml(info.nombre || "Grupo de WhatsApp")}</div><div class="group-id">${escaparHtml(g.groupId)}</div></div>
       <div class="group-meta">${Number(info.participantes || 0)} miembros · ${Number(info.administradores || 0)} administradores</div></div>
       <div class="switches">${controles}</div>
-      <form method="post" action="/admin/limits" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-top:12px">
+<form method="get" action="/admin/admins" style="margin-top:12px">
+  <input type="hidden" name="token" value="${escaparHtml(token)}">
+  <input type="hidden" name="groupId" value="${escaparHtml(g.groupId)}">
+
+  <button class="toggle" type="submit" style="justify-content:center;background:var(--accent)">
+    👑 Ver administradores
+  </button>
+</form>     
+<form method="post" action="/admin/limits" style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-top:12px">
         <input type="hidden" name="token" value="${escaparHtml(token)}">
         <input type="hidden" name="groupId" value="${escaparHtml(g.groupId)}">
         <label class="toggle" style="cursor:default"><span>Límite emojis</span><input name="limiteEmojis" type="number" min="1" max="100" value="${Number(g.limiteEmojis || 8)}" style="width:72px;background:#111827;color:white;border:1px solid var(--line);border-radius:8px;padding:7px"></label>
@@ -253,7 +352,130 @@ app.post("/admin/limits", (req, res) => {
     res.redirect(`/admin?token=${encodeURIComponent(req.body.token || PANEL_TOKEN)}`);
   } catch (error) { res.status(400).send(`Error: ${escaparHtml(error.message)}`); }
 });
+app.get("/admin/admins", async (req, res) => {
 
+  if (!panelAutorizado(req)) {
+    return res.status(401).send("Acceso denegado");
+  }
+
+  try {
+
+    const wa = socket();
+
+    if (!wa) {
+      return res.send("WhatsApp no conectado");
+    }
+
+    const groupId = req.query.groupId;
+
+    if (!groupId) {
+      return res.send("Falta groupId");
+    }
+
+    const metadata = await wa.groupMetadata(groupId);
+console.log("SOCKET KEYS:", Object.keys(wa).filter(x => x.toLowerCase().includes("lid")));
+console.log("PRIMER ADMIN:", metadata.participants[0]);
+    const bloqueados = listarTodosBloqueados();
+
+    const admins = metadata.participants
+      .filter(p => p.admin)
+      .map(p => {
+        const estaBloqueado = Array.isArray(bloqueados) && bloqueados.some(b =>
+  b.group_id === groupId && b.user_id === p.id
+);
+
+        return `
+<tr>
+  <td>
+    <strong>${escaparHtml(nombreVisible(obtenerJid(p)))}</strong><br>
+    <small>${escaparHtml(p.phoneNumber || obtenerJid(p))}</small>
+  </td>
+
+    <td>
+      <span class="badge">
+        ${escaparHtml(p.admin)}
+      </span>
+    </td>
+
+    <td>
+      <span class="badge">
+        ${estaBloqueado ? "🔴 Bloqueado" : "🟢 Activo"}
+      </span>
+    </td>
+
+    <td>
+      <form method="post" action="/api/bloquear" style="display:inline">
+        <input type="hidden" name="token" value="${escaparHtml(req.query.token)}">
+        <input type="hidden" name="groupId" value="${escaparHtml(groupId)}">
+        <input type="hidden" name="userId" value="${escaparHtml(p.id)}">
+
+        <button class="toggle" type="submit">
+          🔒 Bloquear bot
+        </button>
+      </form>
+
+      <form method="post" action="/api/desbloquear" style="display:inline">
+        <input type="hidden" name="token" value="${escaparHtml(req.query.token)}">
+        <input type="hidden" name="groupId" value="${escaparHtml(groupId)}">
+        <input type="hidden" name="userId" value="${escaparHtml(p.id)}">
+
+        <button class="toggle" type="submit">
+          🔓 Desbloquear bot
+        </button>
+      </form>
+    </td>
+  </tr>
+`;
+      }).join("");
+
+    const contenido = `
+      <div class="topbar">
+        <div class="title">
+          <h1>👑 Administradores</h1>
+          <p>${escaparHtml(groupId)}</p>
+        </div>
+        <a href="/admin?token=${encodeURIComponent(req.query.token)}">
+          ← Volver
+        </a>
+      </div>
+
+      <div class="card">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Rol</th>
+             <th>Acción</th>  
+          </tr>
+          </thead>
+          <tbody>
+            ${admins || "<tr><td colspan='3'>Sin administradores</td></tr>"}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    res.send(
+      plantillaBase({
+        titulo: "Administradores",
+        contenido: contenido + `
+<script>
+setInterval(() => {
+  location.reload();
+}, 5000);
+</script>
+`,
+        token: req.query.token
+      })
+    );
+
+  } catch (e) {
+
+    res.status(500).send(e.message);
+
+  }
+
+});
 app.get("/admin/api/status", (req, res) => {
   if (!panelAutorizado(req)) return res.status(401).json({ ok: false, error: "Acceso denegado" });
   const resumen = obtenerResumen();
@@ -296,9 +518,10 @@ app.get("/admin/logs", (req, res) => {
   const logs = obtenerLogsPanel(250);
   const filas = logs.map((x) => `<tr><td>${x.id}</td><td>${escaparHtml(x.created_at)}</td><td>${escaparHtml(informacionGruposPanel.get(x.group_id)?.nombre || x.group_id)}</td><td><span class="badge">${escaparHtml(nombreAccion(x.action))}</span></td><td>${escaparHtml(x.actor_id || "—")}</td><td>${escaparHtml(x.target_id || "—")}</td><td>${escaparHtml(x.reason || "—")}</td></tr>`).join("");
   const contenido = `<div class="topbar"><div class="title"><h1>Registros de moderación</h1><p>Últimas ${logs.length} acciones guardadas en SQLite.</p></div><a href="/admin?token=${encodeURIComponent(token)}">← Volver</a></div><div class="card" style="padding:0;overflow:auto"><table class="log-table"><thead><tr><th>ID</th><th>Fecha</th><th>Grupo</th><th>Acción</th><th>Actor</th><th>Objetivo</th><th>Motivo</th></tr></thead><tbody>${filas || '<tr><td colspan="7" class="empty">Sin registros.</td></tr>'}</tbody></table></div>`;
-  res.send(plantillaBase({ titulo: "Registros", contenido, token }));
-});
+  contenido += `<script>setInterval(()=>location.reload(),5000);</script>`;
 
+res.send(plantillaBase({ titulo: "Registros", contenido, token }));;
+});
 app.get("/", (_req, res) => {
   res.send("WhatsApp Bot funcionando correctamente");
 });

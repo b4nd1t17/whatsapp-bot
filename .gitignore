@@ -11,3 +11,25 @@ backups/*
 !backups/.gitkeep
 .DS_Store
 npm-debug.log*
+
+data/.install-id
+auth_backup/
+auth_backup2/
+auth_*/
+*.tar.gz
+*.zip
+
+auth_backup/
+auth_backup2/
+auth_*/
+*.tar.gz
+*.zip
+
+# Copias locales de desarrollo
+*.backup*
+*.BACKUP*
+*.seguro
+*.copia-lid
+*-funcionando.js
+*-roto.js
+*.antes-*

@@ -103,7 +103,7 @@ export function obtenerMensajeCitado(message, chat) {
 }
 
 export function contieneEnlace(texto) {
-  return /(https?:\/\/|www\.|chat\.whatsapp\.com\/|wa\.me\/|t\.me\/|discord\.gg\/)/i.test(texto);
+  return /(chat\.whatsapp\.com\/|wa\.me\/|t\.me\/|discord\.gg\/)/i.test(texto);
 }
 
 export function encontrarPalabraProhibida(texto, palabrasProhibidas) {

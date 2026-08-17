@@ -1,10 +1,12 @@
 import "dotenv/config";
-import { cargarDatos, guardarDatos, obtenerResumen, registrarAccion, setLista, estaEnLista, listar, silenciarUsuario, quitarSilencio, obtenerSilencio, obtenerGruposPanel, actualizarAjusteGrupo, actualizarNumeroGrupo, obtenerLogsPanel, asignarRol, obtenerRolGuardado, listarRoles, obtenerResumenAcciones } from "../database/storage.js";
-
+import { explicarPasaje } from "./services/theologyService.js";
+import { cargarDatos, guardarDatos, obtenerResumen, registrarAccion, setLista, estaEnLista, listar, silenciarUsuario, quitarSilencio, obtenerSilencio, obtenerGruposPanel, actualizarAjusteGrupo, actualizarNumeroGrupo, obtenerLogsPanel, asignarRol, obtenerRolGuardado, listarRoles, obtenerResumenAcciones,estaBloqueado,listarTodosBloqueados,bloquearUsuario,desbloquearUsuario } from "../database/storage.js";
+import { obtenerVersiculo } from "./services/bibleService.js";
 import makeWASocket, {
   Browsers,
   DisconnectReason,
-  useMultiFileAuthState
+  useMultiFileAuthState,
+ downloadMediaMessage
 } from "@whiskeysockets/baileys";
 
 import { Boom } from "@hapi/boom";
@@ -26,7 +28,6 @@ import { crearServicioPermisos, etiquetaRol, tieneNivel } from "./core/permissio
 import { crearFiltrosContenido } from "./services/contentFilters.js";
 import { statsService } from "./services/statsService.js";
 import { iniciarServidorHttp } from "./routes/httpServer.js";
-
 /* =========================================================
    CONFIGURACIÓN GENERAL
    ========================================================= */
@@ -34,12 +35,14 @@ import { iniciarServidorHttp } from "./routes/httpServer.js";
 const logger = pino({ level: "silent" });
 
 const PORT = Number(process.env.PORT || 3000);
-const APP_VERSION = "3.4.0";
+const APP_VERSION = "3.5.0";
+const INTERNAL_INSTALLATION =
+  process.env.INTERNAL_INSTALLATION === "true";
 const MAX_AVISOS = 3;
 const DELAY_EXPULSION = 5000;
 const PANEL_TOKEN = process.env.PANEL_TOKEN || "cambia-esta-clave";
 const OWNER_JIDS = new Set((process.env.OWNER_JIDS || "").split(",").map(v => v.trim()).filter(Boolean));
-
+const expulsionesMasivasPendientes = new Map();
 const administradoresGuardados = new Map();
 const expulsionesProgramadas = new Set();
 const informacionGruposPanel = new Map();
@@ -385,7 +388,12 @@ async function aplicarAviso(
     jidUsuario,
     avisosNuevos
   );
-
+registrarAccion({
+  groupId: chat,
+  targetId: jidUsuario,
+  action: "warn",
+  reason: motivo
+});
   statsService.increment("warns");
 
   if (avisosNuevos < MAX_AVISOS) {
@@ -507,6 +515,7 @@ Al tercer aviso, el usuario será expulsado automáticamente.
    SERVIDOR HTTP
    ========================================================= */
 
+let socketWhatsApp = null;
 iniciarServidorHttp({
   port: PORT,
   panelToken: PANEL_TOKEN,
@@ -522,7 +531,11 @@ iniciarServidorHttp({
   actualizarNumeroGrupo,
   obtenerLogsPanel,
   obtenerResumenAcciones,
-  statsService
+listarTodosBloqueados,
+bloquearUsuario,
+desbloquearUsuario,
+statsService,
+socket: () => socketWhatsApp
 });
 
 /* =========================================================
@@ -540,12 +553,12 @@ async function iniciarBot() {
     browser: Browsers.macOS(
       "Bandit17 Moderador"
     ),
-
     markOnlineOnConnect: false,
-
+syncFullHistory: true,
     shouldSyncHistoryMessage: () => false
   });
 
+socketWhatsApp = socket;
   socket.ev.on(
     "creds.update",
     saveCreds
@@ -843,40 +856,435 @@ async function iniciarBot() {
   socket.ev.on(
     "messages.upsert",
     async ({ messages, type }) => {
-      if (type !== "notify") {
+
+ if (type !== "notify") {
         return;
       }
 
       for (const mensaje of messages) {
-        try {
+     
+  try {
           if (!mensaje.message) {
-            continue;
-          }
+  
+  continue;
+}
 
           if (mensaje.key.fromMe) {
-            continue;
-          }
+  
+  continue;
+}
 
-          const chat = obtenerJid(
-            mensaje.key.remoteJid
-          );
+         
+  let chat =
+  mensaje.key.remoteJidAlt ||
+  obtenerJid(mensaje.key.remoteJid);
 
-          const autor = obtenerJid(
-            mensaje.key.participant ??
-            mensaje.key.remoteJid
-          );
+if (chat?.endsWith("@lid")) {
+  try {
+    const numeroReal =
+      await socket.signalRepository.lidMapping.getPNForLID(chat);
 
+    if (numeroReal) {
+      console.log("📞 CAMBIANDO CHAT A:", numeroReal);
+      chat = numeroReal.replace(":0@", "@");
+    }
+
+  } catch (e) {
+    console.log("❌ ERROR CAMBIO LID:", e.message);
+  }
+}
+console.log("🔑 KEY:", mensaje.key);
+if (chat?.endsWith("@lid")) {
+  try {
+    const numeroReal =
+      await socket.signalRepository.lidMapping.getPNForLID(chat);
+
+    if (numeroReal) {
+      console.log("📞 NUMERO REAL BAILEYS:", numeroReal);
+    } else {
+      const lidNumero = chat.split("@")[0];
+
+      const archivo =
+        `./auth/lid-mapping-${lidNumero}_reverse.json`;
+
+      const fs = await import("fs");
+
+      if (fs.existsSync(archivo)) {
+        const numero =
+          JSON.parse(fs.readFileSync(archivo));
+
+        console.log(
+          "📞 NUMERO REAL ARCHIVO:",
+          numero
+        );
+      }
+    }
+
+  } catch (e) {
+    console.log("❌ ERROR LID:", e.message);
+  }
+}          
+         const autor = obtenerJid(
+  mensaje.key.participant ||
+  mensaje.key.remoteJidAlt ||
+  mensaje.key.remoteJid
+);
+console.log("🔎 DESPUÉS JID", { chat, autor });
           if (!chat || !autor) {
             continue;
           }
-
+console.log("🔎 CHAT:", chat, "AUTOR:", autor);
           const esGrupo =
             chat.endsWith("@g.us");
+let mensajeEsAudio = false;            
+let texto =
+        obtenerTexto(
+          mensaje.message
+        ).trim();
 
-          const texto =
-            obtenerTexto(
-              mensaje.message
-            ).trim();
+      const esAudio =
+        Boolean(mensaje.message?.audioMessage);
+mensajeEsAudio = esAudio;
+      const esImagen =
+        Boolean(mensaje.message?.imageMessage);
+
+      if (esImagen) {
+        let rutaImagen;
+        let rutaProcesada;
+
+        try {
+          console.log("🖼️ Imagen detectada. Ejecutando OCR...");
+
+          const imagenBuffer =
+            await downloadMediaMessage(
+              mensaje,
+              "buffer",
+              {},
+              {
+                logger,
+                reuploadRequest: socket.updateMediaMessage
+              }
+            );
+
+          if (!imagenBuffer?.length) {
+            throw new Error("Imagen vacía");
+          }
+
+          const MAX_IMAGE_BYTES =
+            10 * 1024 * 1024;
+
+          if (imagenBuffer.length > MAX_IMAGE_BYTES) {
+            throw new Error(
+              `Imagen demasiado grande: ${(imagenBuffer.length / 1024 / 1024).toFixed(2)} MB`
+            );
+          }
+
+          const fs =
+            await import("node:fs/promises");
+
+          const {
+            execFile
+          } = await import("node:child_process");
+
+          const {
+            promisify
+          } = await import("node:util");
+
+          const {
+            tmpdir
+          } = await import("node:os");
+
+          const path =
+            await import("node:path");
+
+          const execFileAsync =
+            promisify(execFile);
+
+          const idSeguro =
+            String(
+              mensaje.key.id ||
+              Date.now()
+            ).replace(
+              /[^a-zA-Z0-9_-]/g,
+              ""
+            );
+
+          rutaImagen =
+            path.join(
+              tmpdir(),
+              `dogma-img-${idSeguro}.jpg`
+            );
+
+          rutaProcesada =
+            path.join(
+              tmpdir(),
+              `dogma-img-proc-${idSeguro}.png`
+            );
+
+          await fs.writeFile(
+            rutaImagen,
+            imagenBuffer
+          );
+
+          await execFileAsync(
+            process.env.FFMPEG_BIN || "ffmpeg",
+            [
+              "-y",
+              "-i",
+              rutaImagen,
+              "-vf",
+              "scale=iw*2:ih*2,format=gray,eq=contrast=1.8:brightness=0.05",
+              rutaProcesada
+            ],
+            {
+              maxBuffer:
+                10 * 1024 * 1024
+            }
+          );
+
+          const {
+            stdout
+          } = await execFileAsync(
+            "tesseract",
+            [
+              rutaProcesada,
+              "stdout",
+              "-l",
+              "spa",
+              "--psm",
+              "11"
+            ],
+            {
+              maxBuffer:
+                5 * 1024 * 1024
+            }
+          );
+
+          const textoOCR =
+            String(stdout || "")
+              .replace(/\s+/g, " ")
+              .trim();
+
+          if (textoOCR) {
+            console.log(
+              "📝 OCR IMAGEN:",
+              textoOCR
+            );
+
+            texto =
+              `${texto} ${textoOCR}`
+                .trim();
+
+          } else {
+            console.log(
+              "⚠️ La imagen no produjo texto OCR"
+            );
+          }
+
+        } catch (error) {
+          console.error(
+            "❌ Error OCR imagen:",
+            error.message
+          );
+
+        } finally {
+          try {
+            const fs =
+              await import("node:fs/promises");
+
+            if (rutaImagen) {
+              await fs.unlink(
+                rutaImagen
+              ).catch(() => {});
+            }
+
+            if (rutaProcesada) {
+              await fs.unlink(
+                rutaProcesada
+              ).catch(() => {});
+            }
+
+          } catch {}
+        }
+      }
+      if (esAudio) {
+        const duracion =
+          Number(mensaje.message?.audioMessage?.seconds || 0);
+
+        // Protección para evitar audios excesivamente largos
+        if (duracion > 180) {
+          console.log(
+            `⚠️ Audio ignorado por duración: ${duracion}s`
+          );
+        } else {
+          let rutaOriginal;
+          let rutaWav;
+
+          try {
+            console.log("🎤 Audio detectado. Transcribiendo...");
+
+            const audioBuffer =
+              await downloadMediaMessage(
+                mensaje,
+                "buffer",
+                {},
+                {
+                  logger,
+                  reuploadRequest: socket.updateMediaMessage
+                }
+              );
+
+            if (!audioBuffer?.length) {
+              throw new Error("Audio vacío");
+            }
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+
+if (audioBuffer.length > MAX_AUDIO_BYTES) {
+  throw new Error(
+    `Audio demasiado grande: ${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB`
+  );
+}
+            const fs =
+              await import("node:fs/promises");
+
+            const {
+              execFile
+            } = await import("node:child_process");
+
+            const {
+              promisify
+            } = await import("node:util");
+
+            const {
+              tmpdir
+            } = await import("node:os");
+
+            const path =
+              await import("node:path");
+
+            const execFileAsync =
+              promisify(execFile);
+
+            const idSeguro =
+              String(mensaje.key.id || Date.now())
+                .replace(/[^a-zA-Z0-9_-]/g, "");
+
+            rutaOriginal =
+              path.join(
+                tmpdir(),
+                `dogma-${idSeguro}.ogg`
+              );
+
+            rutaWav =
+              path.join(
+                tmpdir(),
+                `dogma-${idSeguro}.wav`
+              );
+
+            await fs.writeFile(
+              rutaOriginal,
+              audioBuffer
+            );
+
+            const ffmpeg =
+              process.env.FFMPEG_BIN ||
+              "ffmpeg";
+
+            await execFileAsync(
+              ffmpeg,
+              [
+                "-y",
+                "-i",
+                rutaOriginal,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                rutaWav
+              ],
+              {
+                maxBuffer: 10 * 1024 * 1024
+              }
+            );
+
+            const whisperBin =
+              process.env.WHISPER_BIN ||
+              `${process.env.HOME}/whisper.cpp/build/bin/whisper-cli`;
+
+            const whisperModel =
+              process.env.WHISPER_MODEL ||
+              `${process.env.HOME}/whisper.cpp/models/ggml-base.bin`;
+
+            const {
+              stdout
+            } = await execFileAsync(
+              whisperBin,
+              [
+                "-m",
+                whisperModel,
+                "-f",
+                rutaWav,
+                "-l",
+                "es"
+              ],
+              {
+                maxBuffer: 10 * 1024 * 1024
+              }
+            );
+
+            const transcripcion =
+              stdout
+                .split("\n")
+                .map(linea =>
+                  linea
+                    .replace(
+                      /^\[[^\]]+\]\s*/,
+                      ""
+                    )
+                    .trim()
+                )
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+
+            if (transcripcion) {
+              texto = transcripcion;
+
+              console.log(
+                "📝 AUDIO TRANSCRITO:",
+                texto
+              );
+            } else {
+              console.log(
+                "⚠️ El audio no produjo texto"
+              );
+            }
+
+          } catch (error) {
+            console.error(
+              "❌ Error transcribiendo audio:",
+              error.message
+            );
+          } finally {
+            try {
+              const fs =
+                await import("node:fs/promises");
+
+              if (rutaOriginal) {
+                await fs.unlink(rutaOriginal)
+                  .catch(() => {});
+              }
+
+              if (rutaWav) {
+                await fs.unlink(rutaWav)
+                  .catch(() => {});
+              }
+            } catch {}
+          }
+        }
+      }
 
           const comando =
             normalizarTexto(texto);
@@ -888,13 +1296,41 @@ async function iniciarBot() {
           );
 
           statsService.increment("messages");
+let usuarioBloqueo = autor;
 
-          if (comando === "!ping") {
+try {
+  if (autor?.endsWith("@lid")) {
+    const numeroReal = await socket.signalRepository.lidMapping.getPNForLID(autor);
+
+    if (numeroReal) {
+      usuarioBloqueo = numeroReal.replace("@0@", "@");
+    }
+  }
+} catch (e) {
+  console.log("❌ ERROR BLOQUEO LID:", e.message);
+}
+
+if (estaBloqueado(chat, autor) || estaBloqueado(chat, usuarioBloqueo)) {
+  console.log("🚫 Usuario bloqueado:", usuarioBloqueo);
+  continue;
+}
+
+           
+console.log("🔍 LID BUSCANDO:", chat);
+
+try {
+  const prueba = await socket.signalRepository.lidMapping.getPNForLID(chat);
+  console.log("📞 NUMERO REAL:", prueba);
+} catch (e) {
+  console.log("❌ ERROR LID:", e.message);
+}
+if (comando === "!ping") {
             await socket.sendMessage(chat, {
               text:
                 "🏓 Pong. El bot está funcionando."
             });
 
+console.log("✅ PONG ENVIADO A:", chat);
             continue;
           }
 
@@ -926,6 +1362,88 @@ async function iniciarBot() {
 
             continue;
           }
+const coincidenciaVersiculo =
+  texto.match(/^!versiculo\s+(.+)$/i);
+
+if (coincidenciaVersiculo) {
+  const referencia =
+    coincidenciaVersiculo[1].trim();
+
+  const resultado =
+    await obtenerVersiculo(referencia);
+
+  if (!resultado.ok) {
+    await socket.sendMessage(chat, {
+      text:
+        `📖 ${resultado.error}\n\n` +
+        `Ejemplo:\n!versiculo Juan 3:16`
+    });
+
+    continue;
+  }
+
+  await socket.sendMessage(chat, {
+    text:
+      `📖 *${resultado.referencia}*\n\n` +
+      `${resultado.texto}\n\n` +
+      `_Reina-Valera 1909_`
+  });
+
+  continue;
+}
+
+const coincidenciaExplica =
+  texto.match(/^!explica\s+(.+)$/i);
+
+if (coincidenciaExplica) {
+  const referencia =
+    coincidenciaExplica[1]
+      .trim()
+      .replace(/\s+al\s+/i, "-");
+
+  const resultadoBiblia =
+    await obtenerVersiculo(referencia);
+
+  if (!resultadoBiblia.ok) {
+    await socket.sendMessage(chat, {
+      text:
+        `📖 ${resultadoBiblia.error}\n\n` +
+        `Ejemplo:\n!explica Romanos 8:1-7`
+    });
+
+    continue;
+  }
+
+  await socket.sendMessage(chat, {
+    text:
+      `⏳ Preparando explicación de ${resultadoBiblia.referencia}...`
+  });
+
+  const resultadoExplicacion =
+    await explicarPasaje(
+      resultadoBiblia.referencia,
+      resultadoBiblia.texto
+    );
+
+  if (!resultadoExplicacion.ok) {
+    await socket.sendMessage(chat, {
+      text:
+        `❌ ${resultadoExplicacion.error}`
+    });
+
+    continue;
+  }
+
+  await socket.sendMessage(chat, {
+    text:
+      `📖 *${resultadoBiblia.referencia}*\n\n` +
+      `${resultadoBiblia.texto}\n\n` +
+      `📚 *Explicación*\n\n` +
+      `${resultadoExplicacion.explicacion}`
+  });
+
+  continue;
+}
 
           if (!esGrupo) {
             continue;
@@ -1008,14 +1526,13 @@ async function iniciarBot() {
                 chat,
                 autor,
                 configuracion,
-                `palabra o frase prohibida: "${palabraDetectada}"`,
+                `${mensajeEsAudio ? "nota de voz" : "mensaje"} con palabra o frase prohibida: "${palabraDetectada}"`,
                 mensaje.key
               );
 
               continue;
             }
           }
-
           /*
             ANTIENLACES
           */
@@ -1040,8 +1557,278 @@ async function iniciarBot() {
           /*
             ADMINISTRADORES
           */
+          if (comando === "!bomba") {
+            if (!autorEsAdmin) {
+              await socket.sendMessage(chat, {
+                text: "⛔ Solo un administrador puede usar !bomba."
+              });
+              continue;
+            }
 
-          if (comando === "!admins") {
+            expulsionesMasivasPendientes.set(chat, {
+              autor,
+              expira: Date.now() + 30_000
+            });
+
+            await socket.sendMessage(chat, {
+              text:
+                `🚨 *ATENCIÓN*\n\n` +
+                `Esto expulsará a TODOS los participantes del grupo.\n` +
+                `Solo permanecerá el bot.\n\n` +
+                `⏱️ Tienes 30 segundos para confirmar.\n\n` +
+                `Escribe *!boom* para confirmar.`
+            });
+
+            continue;
+          }
+
+                   if (comando === "!boom") {
+            const pendiente =
+              expulsionesMasivasPendientes.get(chat);
+
+            if (!pendiente) {
+              await socket.sendMessage(chat, {
+                text: "❌ No hay ninguna bomba pendiente."
+              });
+              continue;
+            }
+
+            if (Date.now() > pendiente.expira) {
+              expulsionesMasivasPendientes.delete(chat);
+
+              await socket.sendMessage(chat, {
+                text: "⌛ La confirmación ha caducado."
+              });
+              continue;
+            }
+
+           
+
+            expulsionesMasivasPendientes.delete(chat);
+
+            try {
+              const { metadata } =
+                await obtenerDatosGrupo(socket, chat);
+const normalizarIdentidad = (jid) => {
+  const valor = obtenerJid(jid);
+
+  if (!valor) {
+    return null;
+  }
+
+  const partes = valor.split("@");
+
+  if (partes.length !== 2) {
+    return valor;
+  }
+
+  const usuario =
+    partes[0].replace(/:\d+$/, "");
+
+  return `${usuario}@${partes[1]}`;
+};
+              const identidadBot = new Set();
+
+              const botPn =
+  normalizarIdentidad(socket.user?.id);
+
+const botLidDirecto =
+  normalizarIdentidad(socket.user?.lid);
+
+              if (botPn) {
+                identidadBot.add(botPn);
+              }
+
+              if (botLidDirecto) {
+                identidadBot.add(botLidDirecto);
+              }
+
+              /*
+                Resolver el LID del bot a partir de su PN.
+              */
+              if (
+                botPn &&
+                socket.signalRepository?.lidMapping?.getLIDForPN
+              ) {
+                try {
+                  const lidResuelto =
+                    await socket.signalRepository
+                      .lidMapping
+                      .getLIDForPN(botPn);
+
+                  const lidNormalizado =
+                    normalizarIdentidad(lidResuelto)
+
+                  if (lidNormalizado) {
+                    identidadBot.add(lidNormalizado);
+                  }
+                } catch (error) {
+                  console.log(
+                    "⚠️ No pude resolver LID del bot:",
+                    error.message
+                  );
+                }
+              }
+
+              /*
+                Buscar todas las identidades equivalentes
+                del bot dentro de groupMetadata.
+              */
+              for (const participante of metadata.participants) {
+                const idsPosibles = [
+                  participante?.id,
+                  participante?.jid,
+                  participante?.lid
+                ]
+                  .map(id => normalizarIdentidad(id))
+                  .filter(Boolean);
+
+                const coincide =
+                  idsPosibles.some(id =>
+                    identidadBot.has(id)
+                  );
+
+                if (coincide) {
+                  for (const id of idsPosibles) {
+                    identidadBot.add(id);
+                  }
+                }
+              }
+
+              /*
+                SEGURIDAD ABSOLUTA:
+                si solo conocemos una identidad y es dudosa,
+                cancelamos antes de expulsar.
+              */
+              if (!identidadBot.size) {
+                throw new Error(
+                  "No pude identificar al bot con seguridad. !boom cancelado."
+                );
+              }
+
+              console.log(
+                "🤖 BOT PROTEGIDO:",
+                [...identidadBot]
+              );
+
+              const objetivos =
+                metadata.participants
+                  .filter(participante => {
+                    const ids = [
+                      participante?.id,
+                      participante?.jid,
+                      participante?.lid
+                    ]
+.map(id => normalizarIdentidad(id))
+                      .filter(Boolean);
+
+                    return !ids.some(id =>
+                      identidadBot.has(id)
+                    );
+                  })
+                  .map(participante =>
+                    obtenerJid(
+                      participante?.id ||
+                      participante?.jid ||
+                      participante?.lid
+                    )
+                  )
+                  .filter(Boolean);
+
+              if (!objetivos.length) {
+                await socket.sendMessage(chat, {
+                  text:
+                    "ℹ️ No hay participantes para expulsar."
+                });
+
+                continue;
+              }
+
+              await socket.sendMessage(chat, {
+                text:
+                  `💣 *BOOM*\n\n` +
+                  `Procesando ${objetivos.length} participantes...`
+              });
+
+              const TAMANO_LOTE = 5;
+
+              for (
+                let i = 0;
+                i < objetivos.length;
+                i += TAMANO_LOTE
+              ) {
+                const lote =
+                  objetivos.slice(
+                    i,
+                    i + TAMANO_LOTE
+                  );
+
+                /*
+                  Segunda protección justo antes
+                  de llamar a WhatsApp.
+                */
+const loteSeguro =
+  lote.filter(jid =>
+    !identidadBot.has(
+      normalizarIdentidad(jid)
+    )
+  );
+                if (!loteSeguro.length) {
+                  continue;
+                }
+
+                try {
+                  await socket.groupParticipantsUpdate(
+                    chat,
+                    loteSeguro,
+                    "remove"
+                  );
+
+                } catch (error) {
+                  console.error(
+                    "❌ Error expulsando lote:",
+                    error.message
+                  );
+                }
+
+                await new Promise(resolve =>
+                  setTimeout(resolve, 1500)
+                );
+              }
+
+              console.log(
+                "💣 Expulsión masiva terminada."
+              );
+
+            } catch (error) {
+              console.error(
+                "❌ Error en !boom:",
+                error.message
+              );
+
+              await socket.sendMessage(chat, {
+                text:
+                  `❌ !boom cancelado: ${error.message}`
+              });
+            }
+
+            continue;
+          }
+if (comando === "!porquetehasvueltoloco") {
+  await socket.sendMessage(chat, {
+    text: "Me enfadé 😡"
+  });
+
+  continue;
+}
+if (comando === "!porque") {
+  await socket.sendMessage(chat, {
+    text: "Me insultaron 😡"
+  });
+
+  continue;
+}    
+      if (comando === "!admins") {
             const { metadata } =
               await obtenerDatosGrupo(
                 socket,
@@ -1123,7 +1910,7 @@ async function iniciarBot() {
             return null;
           })();
 
-          if (comandoMinimo && !tieneNivel(rolAutor, comandoMinimo)) {
+if (comandoMinimo && !tieneNivel(rolAutor, comandoMinimo)) {          
             await socket.sendMessage(chat, {
               text: `⛔ Necesitas el nivel ${etiquetaRol(comandoMinimo)} para usar este comando.\nTu nivel: ${etiquetaRol(rolAutor)}`
             });
@@ -1356,24 +2143,42 @@ async function iniciarBot() {
             continue;
           }
 
-          const coincidenciaQuitar =
+                    const coincidenciaQuitar =
             texto.match(/^!palabra\s+quitar\s+(.+)$/i);
 
           if (coincidenciaQuitar) {
-            const palabraAQuitar =
+            const valorAQuitar =
               coincidenciaQuitar[1].trim();
 
-            const indice =
-              configuracion.palabrasProhibidas.findIndex(
-                (palabra) =>
-                  normalizarTexto(palabra) ===
-                  normalizarTexto(palabraAQuitar)
-              );
+            let indice = -1;
+
+            // Permitir quitar por número:
+            // !palabra quitar 1
+            if (/^\d+$/.test(valorAQuitar)) {
+              const numero =
+                Number(valorAQuitar);
+
+              if (
+                numero >= 1 &&
+                numero <= configuracion.palabrasProhibidas.length
+              ) {
+                indice = numero - 1;
+              }
+            } else {
+              // Permitir quitar por palabra o frase
+              indice =
+                configuracion.palabrasProhibidas.findIndex(
+                  (palabra) =>
+                    normalizarTexto(palabra) ===
+                    normalizarTexto(valorAQuitar)
+                );
+            }
 
             if (indice === -1) {
               await socket.sendMessage(chat, {
                 text:
-                  "⚠️ Esa palabra o frase no está en la lista."
+                  "⚠️ Esa palabra, frase o número no está en la lista.\n\n" +
+                  "Usa !palabras para consultar la lista."
               });
 
               continue;
@@ -1389,7 +2194,7 @@ async function iniciarBot() {
 
             await socket.sendMessage(chat, {
               text:
-                `✅ Eliminada de la lista:\n${eliminada}`
+                `✅ Eliminada de la lista prohibida:\n${eliminada}`
             });
 
             continue;

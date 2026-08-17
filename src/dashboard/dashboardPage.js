@@ -6,14 +6,16 @@
 import { crearTarjetasEstadisticas } from "./components/statsCards.js";
 import { crearEstadoSistema } from "./components/systemStatus.js";
 import { crearActividadReciente } from "./components/activityFeed.js";
-
+import { crearUsuariosBloqueados } from "./components/blockedUsers.js";
 
 export function crearDashboard(datos = {}) {
 
   const {
     stats = {},
     sistema = {},
-    actividad = []
+    actividad = [],
+ bloqueados = [],
+  token = ""
   } = datos;
 
 
@@ -330,6 +332,15 @@ ${crearEstadoSistema(sistema)}
 <div class="section card">
 
 ${crearActividadReciente(actividad)}
+
+</div>
+
+
+<div class="section card">
+
+
+
+${crearUsuariosBloqueados(bloqueados, token)}
 
 </div>
 
